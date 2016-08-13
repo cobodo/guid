@@ -1,0 +1,2 @@
+GUIDっぽいのをC++>=11のaggregate initializationにするやーつ
+attoparsecとhspecの練習で書いた
