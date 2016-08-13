@@ -8,67 +8,62 @@ module Lib
     , toCppAggr
     ) where
 
+import Control.Applicative ((<$>), (<*>), (<*), (*>))
 import Data.Char (isHexDigit)
-import Data.List (intercalate)
-import Data.Text (Text, pack, unpack, append)
+import Data.List (foldl', intercalate)
+import qualified Data.Text as T (Text, pack, unpack, append, empty, intercalate)
 import Data.Attoparsec.Text
 import qualified Data.Text.IO as T
 
 data GUID = GUID
-          { data1 :: Text
-          , data2 :: Text
-          , data3 :: Text
-          , data4 :: Text
+          { data1 :: T.Text
+          , data2 :: T.Text
+          , data3 :: T.Text
+          , data4 :: T.Text
           }
           deriving (Show, Eq, Ord)
 
 begin :: Parser Char
-begin = char '{'
+begin = char '{' <?> "begin brace"
 end :: Parser Char
-end = char '}'
+end = char '}' <?> "end brace"
 sep :: Parser Char
-sep = char '-'
+sep = char '-' <?> "digit separator"
 hexDigit :: Parser Char
-hexDigit = satisfy isHexDigit
-h :: Int -> Parser Text
-h n = do
-        s <- count n hexDigit
-        return . pack $ s
+hexDigit = satisfy isHexDigit <?> "isHexDigit"
+h :: Int -> Parser T.Text
+h n = T.pack <$> count n hexDigit
+        <?> "n times digits"
 
-parseData1 :: Parser Text
-parseData1 = h 8
-parseData2 :: Parser Text
-parseData2 = h 4
-parseData3 :: Parser Text
-parseData3 = h 4
-parseData4 :: Parser Text
-parseData4 = do
-        headPart <- h 4
-        sep
-        tailPart <- h 12
-        return $ headPart `append` tailPart
+parseData1 :: Parser T.Text
+parseData1 = h 8 <?> "Data1"
+parseData2 :: Parser T.Text
+parseData2 = h 4 <?> "Data2"
+parseData3 :: Parser T.Text
+parseData3 = h 4 <?> "Data3"
+parseData4 :: Parser T.Text
+parseData4 = T.append <$> h 4 <* sep <*> h 12
+        <?> "Data4"
 
 parseInner :: Parser GUID
-parseInner = do
-        d1 <- h 8
-        sep
-        d2 <- h 4
-        sep
-        d3 <- h 4
-        sep
-        d41 <- h 4
-        sep
-        d42 <- h 12
-        return $ GUID d1 d2 d3 (d41 `append` d42)
+parseInner = GUID
+        <$> parseData1 <* sep
+        <*> parseData2 <* sep
+        <*> parseData3 <* sep
+        <*> parseData4
+        <?> "inner part"
+
+guidWithBraces :: Parser GUID
+guidWithBraces = begin *> parseInner <* end
+        <?> "GUID with braces"
+
+guidWithoutBraces :: Parser GUID
+guidWithoutBraces = parseInner <?> "GUID without braces"
 
 guidParser :: Parser GUID
-guidParser = do
-        begin
-        x <- parseInner
-        end
-        return x
+guidParser = choice [guidWithBraces, guidWithoutBraces]
 
-parseGuid :: Text -> Either String GUID
+parseGuid :: T.Text -> Either String GUID
 parseGuid s = parseOnly guidParser s
 
 toHexLit :: String -> String
@@ -81,22 +76,27 @@ toCharList (c1:c2:cs) = [c1, c2] : toCharList cs
 toInitializerList :: [String] -> String
 toInitializerList bs = "{" ++ (intercalate "," bs) ++ "}"
 
-toCppAggr :: GUID -> Text
-toCppAggr guid =
-        "GUID{" `append`
-        (pack . toHexLit . unpack $ data1 guid) `append` "," `append`
-        (pack . toHexLit . unpack $ data2 guid) `append` "," `append`
-        (pack . toHexLit . unpack $ data3 guid) `append` "," `append`
-        (pack . toInitializerList . map toHexLit . toCharList . unpack $ data4 guid) `append`
-        "}"
+toCppAggr :: GUID -> T.Text
+toCppAggr guid = foldl' T.append T.empty d
+    where
+        d = [hd, ds, tl]
+        hd = T.pack "GUID{"
+        ds = T.intercalate (T.pack ",") [d1, d2, d3, d4]
+        d1 = toHex $ data1 guid
+        d2 = toHex $ data2 guid
+        d3 = toHex $ data3 guid
+        d4 = toArr $ data4 guid
+        toHex = T.pack . toHexLit . T.unpack
+        toArr = T.pack . toInitializerList . map toHexLit . toCharList . T.unpack
+        tl = T.pack "}"
 
-makeOutput :: Either String GUID -> Text
-makeOutput (Left s) = pack s
+makeOutput :: Either String GUID -> T.Text
+makeOutput (Left s) = T.pack s
 makeOutput (Right result) = toCppAggr result
 
 run :: IO ()
 run = do
         str <- getLine
-        T.putStrLn . pack $ str
-        T.putStrLn . makeOutput . parseGuid . pack $ str
+        T.putStrLn . T.pack $ str
+        T.putStrLn . makeOutput . parseGuid . T.pack $ str
 

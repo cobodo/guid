@@ -1,19 +1,28 @@
 module LibSpec
-    ( spec
+    ( libSpec
     ) where
 
 import Test.Hspec
 import Data.Text (pack)
 import Lib
 
-spec :: Spec
-spec = do
+libSpec :: Spec
+libSpec = do
         describe "parseGuid" $ do
             it "parses '{21E81DE2-8048-43EA-BE6C-B17541493312}'" $
                 parseGuid (pack "{21E81DE2-8048-43EA-BE6C-B17541493312}") `shouldBe`
                     (Right $ GUID (pack "21E81DE2") (pack "8048") (pack "43EA") (pack "BE6CB17541493312"))
+            it "fails to parses '{-8048-43EA-}'" $
+                parseGuid (pack "{-8048-43EA-}") `shouldBe` Left "Failed reading: empty"
             it "fails to parses '{}'" $
-                parseGuid (pack "{}") `shouldBe` Left "Failed reading: satisfy"
+                parseGuid (pack "{}") `shouldBe` Left "Failed reading: empty"
+            it "parses '21E81DE2-8048-43EA-BE6C-B17541493312'" $
+                parseGuid (pack "21E81DE2-8048-43EA-BE6C-B17541493312") `shouldBe`
+                    (Right $ GUID (pack "21E81DE2") (pack "8048") (pack "43EA") (pack "BE6CB17541493312"))
+            it "fails to parses '-8048-43EA-'" $
+                parseGuid (pack "-8048-43EA-") `shouldBe` Left "Failed reading: empty"
+            it "fails to parses ''" $
+                parseGuid (pack "") `shouldBe` Left "Failed reading: empty"
         describe "toCppAggr" $ do
             it "takes GUID and convert to C++ aggregate initialization form" $
                 toCppAggr (GUID (pack "21E81DE2") (pack "8048") (pack "43EA") (pack "BE6CB17541493312")) `shouldBe`
